@@ -47,40 +47,48 @@
     End Sub
 
     Private Sub MoveToNewSentFolder(myItem As Object)
-        ' Inspired by https://www.itprotoday.com/management-mobility/outlook-2010-move-mailitems-after-sending
         Dim NewSentItemsFolder As Outlook.Folder
         Dim NewSentItemsPath As String
         Dim fromAddress As String
-        'Identify sender address
+
+        ' Identify sender address
         If myItem.Sender IsNot Nothing Then
-            fromAddress = myItem.Sender.Address.ToString
+            fromAddress = myItem.Sender.Address.ToString()
+
             ' If the item is not sent from the primary email address...
-            If (fromAddress <> primaryEmail) Then
-                ' See if there is a saved "Sent" folder for that address, and if not
-                If Not SentItemFolders.ContainsKey(fromAddress) Then
-                    ' Prompt the user to choose a folder for the sent items.
-                    System.Windows.Forms.MessageBox.Show("Click OK to select the 'Sent Items' folder for items sent from " & fromAddress)
-                    NewSentItemsFolder = mapiNameSpace.PickFolder
-                    'If the user doesn't pick anything, stop
-                    If NewSentItemsFolder Is Nothing Then
-                        Exit Sub
+            If fromAddress <> primaryEmail Then
+                ' Ensure the item is not already in the Sent Items folder
+                If myItem.Parent.FolderPath = OSentItemsFolder.FolderPath Then
+                    ' See if there is a saved "Sent" folder for that address, and if not
+                    If Not SentItemFolders.ContainsKey(fromAddress) Then
+                        ' Prompt the user to choose a folder for the sent items.
+                        System.Windows.Forms.MessageBox.Show("Click OK to select the 'Sent Items' folder for items sent from " & fromAddress)
+                        NewSentItemsFolder = mapiNameSpace.PickFolder()
+
+                        ' If the user doesn't pick anything, stop
+                        If NewSentItemsFolder Is Nothing Then
+                            Exit Sub
+                        End If
+
+                        ' Save the path of the folder chosen for future reference.
+                        NewSentItemsPath = NewSentItemsFolder.FolderPath
+                        SentItemFolders.Add(fromAddress, NewSentItemsPath)
+                        Dim fs As IO.FileStream = New IO.FileStream(UserConfigPath, IO.FileMode.Create, IO.FileAccess.Write, IO.FileShare.None)
+                        binarify.Serialize(fs, SentItemFolders)
+                        fs.Close()
+                    Else
+                        ' If there is a "Sent" folder associated with that email already, retrieve that folder.
+                        NewSentItemsPath = SentItemFolders(fromAddress)
+                        NewSentItemsFolder = GetFolder(NewSentItemsPath)
                     End If
-                    'Save the path of the folder chosen for future reference.
-                    NewSentItemsPath = NewSentItemsFolder.FolderPath
-                    SentItemFolders.Add(fromAddress, NewSentItemsPath)
-                    Dim fs As IO.FileStream = New IO.FileStream(UserConfigPath, IO.FileMode.Create, IO.FileAccess.Write, IO.FileShare.None)
-                    binarify.Serialize(fs, SentItemFolders)
-                    fs.Close()
-                Else
-                    ' If there is a "Sent" folder associated with that email aleady, retrieve that folder. 
-                    NewSentItemsPath = SentItemFolders(fromAddress)
-                    NewSentItemsFolder = GetFolder(NewSentItemsPath)
+
+                    ' Move the mail item to the appropriate folder.
+                    myItem.Move(NewSentItemsFolder)
                 End If
-                ' Move the mail item to the appropriate folder.
-                myItem.Move(NewSentItemsFolder)
             End If
         End If
     End Sub
+
 
     Function GetFolder(ByVal FolderPath As String) As Outlook.Folder
         'This function courtesy of https://docs.microsoft.com/en-us/office/vba/outlook/how-to/items-folders-and-stores/obtain-a-folder-object-from-a-folder-path
