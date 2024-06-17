@@ -1,4 +1,4 @@
-﻿Public Class ThisAddIn
+Public Class ThisAddIn
 
     Private OSentItemsFolder As Outlook.Folder
     Public WithEvents OSentItems As Outlook.Items
@@ -9,19 +9,19 @@
     Private UserConfigFolder As String = Environment.GetEnvironmentVariable("appdata") & "\browlry\SentFolderByFrom"
     Private UserConfigPath As String = UserConfigFolder & "\userconfig.bin"
 
-    'When Outlook starts:
+    ' When Outlook starts:
     Private Sub ThisAddIn_Startup() Handles Me.Startup
         ' Create the folder for storing user settings, if it doesn't exist
         If (Not System.IO.Directory.Exists(UserConfigFolder)) Then
             System.IO.Directory.CreateDirectory(UserConfigFolder)
         End If
         primaryEmail = Application.Session.CurrentUser.Address
-        'Monitor the messages in the Sent Items folder; trigger OSentItems_ItemAdd when a new message is added
+        ' Monitor the messages in the Sent Items folder; trigger OSentItems_ItemAdd when a new message is added
         mapiNameSpace = Application.GetNamespace("MAPI")
         OSentItemsFolder = mapiNameSpace.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderSentMail)
         OSentItems = OSentItemsFolder.Items
         AddHandler OSentItems.ItemAdd, AddressOf OSentItems_ItemAdd
-        'Load the user settings file into the SentItemsFolders dictionary, or create the dictionary if the file doesn't exist or is empty.
+        ' Load the user settings file into the SentItemFolders dictionary, or create the dictionary if the file doesn't exist or is empty.
         If IO.File.Exists(UserConfigPath) Then
             Dim fsRead As New IO.FileStream(UserConfigPath, IO.FileMode.Open, IO.FileAccess.Read, IO.FileShare.None)
             If fsRead.Length > 0 Then
@@ -39,10 +39,10 @@
 
     End Sub
 
-    Private Sub OSentItems_ItemAdd(ByVal myItem As Object) 'specifies the actions when a new item is added to the Sent Items folder
-        'Determine if the item sent is MailItem
+    Private Sub OSentItems_ItemAdd(ByVal myItem As Object) ' specifies the actions when a new item is added to the Sent Items folder
+        ' Determine if the item sent is MailItem
         If TypeName(myItem) = "MailItem" Then
-            Call MoveToNewSentFolder(myItem) 'calls the ChangeSentFolder function when a mail item is sent
+            Call MoveToNewSentFolder(myItem) ' calls the MoveToNewSentFolder function when a mail item is sent
         End If
     End Sub
 
@@ -52,43 +52,50 @@
         Dim fromAddress As String
 
         ' Identify sender address
-        If myItem.Sender IsNot Nothing Then
-            fromAddress = myItem.Sender.Address.ToString()
+        If TypeOf myItem Is Outlook.MailItem Then
+            Dim mailItem As Outlook.MailItem = CType(myItem, Outlook.MailItem)
 
-            ' If the item is not sent from the primary email address...
-            If fromAddress <> primaryEmail Then
-                ' Ensure the item is not already in the Sent Items folder
-                If myItem.Parent.FolderPath = OSentItemsFolder.FolderPath Then
+            ' Verify if the item is in the Sent Items folder
+            If mailItem.Parent IsNot Nothing AndAlso mailItem.Parent Is OSentItemsFolder Then
+                fromAddress = mailItem.SenderEmailAddress
+
+                ' If the sender's address is the same as the primary email address, skip the move
+                If fromAddress = primaryEmail Then
+                    ' Mark the email as read to avoid the unread state issue
+                    mailItem.UnRead = False
+                    mailItem.Save()
+                    Exit Sub
+                End If
+
+                ' If the item is not sent from the primary email address...
+                If (fromAddress <> primaryEmail) Then
                     ' See if there is a saved "Sent" folder for that address, and if not
                     If Not SentItemFolders.ContainsKey(fromAddress) Then
-                        ' Prompt the user to choose a folder for the sent items.
+                        ' Prompt the user to choose a folder for the sent items
                         System.Windows.Forms.MessageBox.Show("Click OK to select the 'Sent Items' folder for items sent from " & fromAddress)
-                        NewSentItemsFolder = mapiNameSpace.PickFolder()
-
+                        NewSentItemsFolder = mapiNameSpace.PickFolder
                         ' If the user doesn't pick anything, stop
                         If NewSentItemsFolder Is Nothing Then
                             Exit Sub
                         End If
-
-                        ' Save the path of the folder chosen for future reference.
+                        ' Save the path of the folder chosen for future reference
                         NewSentItemsPath = NewSentItemsFolder.FolderPath
                         SentItemFolders.Add(fromAddress, NewSentItemsPath)
                         Dim fs As IO.FileStream = New IO.FileStream(UserConfigPath, IO.FileMode.Create, IO.FileAccess.Write, IO.FileShare.None)
                         binarify.Serialize(fs, SentItemFolders)
                         fs.Close()
                     Else
-                        ' If there is a "Sent" folder associated with that email already, retrieve that folder.
+                        ' If there is a "Sent" folder associated with that email already, retrieve that folder
                         NewSentItemsPath = SentItemFolders(fromAddress)
                         NewSentItemsFolder = GetFolder(NewSentItemsPath)
                     End If
 
-                    ' Move the mail item to the appropriate folder.
-                    myItem.Move(NewSentItemsFolder)
+                    ' Move the mail item to the appropriate folder
+                    mailItem.Move(NewSentItemsFolder)
                 End If
             End If
         End If
     End Sub
-
 
     Function GetFolder(ByVal FolderPath As String) As Outlook.Folder
         'This function courtesy of https://docs.microsoft.com/en-us/office/vba/outlook/how-to/items-folders-and-stores/obtain-a-folder-object-from-a-folder-path
@@ -100,7 +107,7 @@
         If Left(FolderPath, 2) = "\\" Then
             FolderPath = Right(FolderPath, Len(FolderPath) - 2)
         End If
-        'Convert folderpath to array 
+        ' Convert folderpath to array 
         FoldersArray = Split(FolderPath, "\")
         TestFolder = Application.Session.Folders.Item(FoldersArray(0))
         If Not TestFolder Is Nothing Then
@@ -113,7 +120,7 @@
                 End If
             Next
         End If
-        'Return the TestFolder 
+        ' Return the TestFolder 
         GetFolder = TestFolder
         Exit Function
 
